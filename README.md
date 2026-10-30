@@ -1,4 +1,15 @@
 # BUILDPRO - Modul 1-5
+> **⚠️ DISCLAIMER — KERANGKA MENTAH (MODUL 1–5)**
+>
+> **BUILDPRO** (manajemen proyek konstruksi: RAB, stok material, progress lapangan, peralatan, SPK & opname, web admin + API + aplikasi mandor) adalah **kerangka / modul pengembangan**, **bukan** sistem yang siap produksi atau siap dipakai langsung di kontraktor / perusahaan konstruksi.
+>
+> - Jalankan sesuai petunjuk README (API, web, mobile, database).
+> - Sebaiknya ditinjau oleh pihak yang paham operasional proyek (owner, QS/estimator, gudang site, mandor, IT).
+> - Kesesuaian alur RAB–stok–progress–biaya dan fitur lapangan **bergantung evaluasi klien**.
+> - Keamanan, akurasi data lapangan, dan kelengkapan fitur **belum** diklaim memadai untuk lingkungan produksi nyata.
+>
+> Saya sebagai developer menyediakan **fondasi / kerangka** dasar.  
+> Apakah sudah sesuai kebutuhan, aman, dan layak dilanjutkan — **keputusan dan tanggung jawab evaluasinya ada pada pengguna / klien**.
 
 Monorepo:
 - `packages/shared` : skema Zod & tipe bersama
