@@ -1,0 +1,15 @@
+{
+  "name": "buildpro-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "setup": "npx expo install react react-native expo-router expo-secure-store expo-image-picker expo-location expo-status-bar expo-linking expo-constants react-native-safe-area-context react-native-screens && npx expo install --dev typescript @types/react",
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios"
+  },
+  "dependencies": {
+    "expo": "~57.0.0"
+  }
+}

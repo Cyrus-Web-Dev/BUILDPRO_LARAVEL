@@ -1,0 +1,381 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANDOR
+}
+enum ProjectStatus {
+  PLANNING
+  ONGOING
+  DONE
+}
+enum RabStatus {
+  DRAFT
+  APPROVED
+}
+enum CostCategory {
+  MATERIAL
+  UPAH
+  ALAT
+  LAINNYA
+}
+// Sumber catatan biaya; modul lain (stok, sewa alat, opname) akan menulis ke sini otomatis
+enum RealizationSource {
+  MANUAL
+  STOK
+  SEWA_ALAT
+  OPNAME
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+  projects  Project[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  realizations Realization[]
+  memberships  ProjectMember[]
+  stockMovements StockMovement[]
+  progressReports ProgressReport[]
+
+  @@index([tenantId])
+}
+
+model Project {
+  id            String        @id @default(uuid())
+  tenantId      String
+  code          String
+  name          String
+  location      String?
+  clientName    String?
+  startDate     DateTime?
+  endDate       DateTime?
+  status        ProjectStatus @default(PLANNING)
+  rabStatus     RabStatus     @default(DRAFT)
+  rabApprovedAt DateTime?
+  createdAt     DateTime      @default(now())
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  rabItems      RabItem[]
+  realizations  Realization[]
+  members       ProjectMember[]
+  stockItems    StockItem[]
+  stockMovements StockMovement[]
+  progressReports ProgressReport[]
+  rentals       EquipmentRental[]
+  workOrders    WorkOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model RabItem {
+  id        String       @id @default(uuid())
+  tenantId  String
+  projectId String
+  code      String
+  name      String
+  category  CostCategory
+  unit      String
+  volume    Decimal      @db.Decimal(18, 3)
+  unitPrice Decimal      @db.Decimal(18, 2)
+  budget    Decimal      @db.Decimal(20, 2) // volume x unitPrice, dihitung di server
+  sortOrder Int          @default(0)
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  realizations Realization[]
+
+  @@unique([projectId, code])
+  @@index([tenantId, projectId])
+}
+
+model Realization {
+  id          String            @id @default(uuid())
+  tenantId    String
+  projectId   String
+  rabItemId   String
+  date        DateTime
+  description String
+  amount      Decimal           @db.Decimal(20, 2)
+  quantity    Decimal?          @db.Decimal(18, 3)
+  vendor      String?
+  receiptUrl  String?
+  source      RealizationSource @default(MANUAL)
+  createdById String
+  createdAt   DateTime          @default(now())
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rabItem     RabItem           @relation(fields: [rabItemId], references: [id])
+  createdBy   User              @relation(fields: [createdById], references: [id])
+
+  @@index([tenantId, projectId])
+  @@index([rabItemId])
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUST
+}
+enum ProgressStatus {
+  SUBMITTED
+  VERIFIED
+  REJECTED
+}
+
+// Penugasan mandor ke proyek. MANDOR hanya bisa mengakses proyek yang ia ikuti.
+model ProjectMember {
+  id        String   @id @default(uuid())
+  tenantId  String
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([tenantId])
+}
+
+// ---- Modul 3: Stok gudang proyek ----
+model StockItem {
+  id               String   @id @default(uuid())
+  tenantId         String
+  projectId        String
+  name             String
+  unit             String
+  minStock         Decimal  @default(0) @db.Decimal(18, 3)
+  currentQty       Decimal  @default(0) @db.Decimal(18, 3)
+  defaultRabItemId String? // pos RAB yang dibebani saat material masuk
+  createdAt        DateTime @default(now())
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  movements        StockMovement[]
+
+  @@unique([projectId, name])
+  @@index([tenantId, projectId])
+}
+
+// Buku kas stok: quantity bertanda (IN +, OUT -, ADJUST +/-). Tidak pernah diubah, hanya dibatalkan (void).
+model StockMovement {
+  id            String            @id @default(uuid())
+  tenantId      String
+  projectId     String
+  stockItemId   String
+  type          StockMovementType
+  quantity      Decimal           @db.Decimal(18, 3)
+  balanceAfter  Decimal           @db.Decimal(18, 3)
+  unitPrice     Decimal?          @db.Decimal(18, 2)
+  totalCost     Decimal?          @db.Decimal(20, 2)
+  supplier      String?
+  refNo         String?
+  note          String?
+  date          DateTime
+  realizationId String?           @unique // biaya yang otomatis tercatat di modul RAB (untuk IN)
+  voidedAt      DateTime?
+  voidedById    String?
+  createdById   String
+  createdAt     DateTime          @default(now())
+  project       Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stockItem     StockItem         @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  createdBy     User              @relation(fields: [createdById], references: [id])
+
+  @@index([tenantId, projectId, date])
+  @@index([stockItemId])
+}
+
+// ---- Modul 4: Progress lapangan ----
+model ProgressReport {
+  id            String         @id @default(uuid())
+  tenantId      String
+  projectId     String
+  reportDate    DateTime
+  percent       Decimal        @db.Decimal(5, 2) // progres kumulatif keseluruhan proyek
+  notes         String?
+  latitude      Float?
+  longitude     Float?
+  accuracy      Float?
+  capturedAt    DateTime? // waktu foto/GPS diambil di perangkat
+  status        ProgressStatus @default(SUBMITTED)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  reviewComment String?
+  createdById   String
+  createdAt     DateTime       @default(now())
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy     User           @relation(fields: [createdById], references: [id])
+  photos        ProgressPhoto[]
+
+  @@index([tenantId, projectId, reportDate])
+}
+
+model ProgressPhoto {
+  id         String         @id @default(uuid())
+  tenantId   String
+  reportId   String
+  storageKey String
+  mimeType   String
+  size       Int
+  sortOrder  Int            @default(0)
+  report     ProgressReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
+// ---- Modul 5a: Sewa alat berat ----
+enum RateType {
+  HOURLY
+  DAILY
+}
+enum RentalStatus {
+  ACTIVE
+  RETURNED
+}
+
+model EquipmentRental {
+  id              String       @id @default(uuid())
+  tenantId        String
+  projectId       String
+  name            String // mis. Excavator PC200
+  code            String? // plat / no. lambung
+  vendor          String?
+  rateType        RateType
+  rate            Decimal      @db.Decimal(18, 2) // per jam atau per hari
+  operatorRate    Decimal      @default(0) @db.Decimal(18, 2) // biaya operator per satuan yang sama
+  plannedQuantity Decimal?     @db.Decimal(18, 3) // rencana total jam/hari, dasar peringatan pembengkakan
+  startDate       DateTime
+  endDate         DateTime // masa berlaku sewa (inklusif)
+  rabItemId       String // pos RAB yang dibebani
+  status          RentalStatus @default(ACTIVE)
+  returnedAt      DateTime?
+  notes           String?
+  createdById     String
+  createdAt       DateTime     @default(now())
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  usages          EquipmentUsage[]
+
+  @@index([tenantId, projectId])
+}
+
+model EquipmentUsage {
+  id            String          @id @default(uuid())
+  tenantId      String
+  projectId     String
+  rentalId      String
+  date          DateTime
+  quantity      Decimal         @db.Decimal(18, 3) // jam atau hari sesuai rateType
+  extraCost     Decimal         @default(0) @db.Decimal(18, 2) // BBM, mobilisasi, dll.
+  cost          Decimal         @db.Decimal(20, 2)
+  note          String?
+  realizationId String?         @unique
+  voidedAt      DateTime?
+  createdById   String
+  createdAt     DateTime        @default(now())
+  rental        EquipmentRental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, projectId])
+  @@index([rentalId])
+}
+
+// ---- Modul 5b: Opname mandor / subkontraktor ----
+enum WorkOrderStatus {
+  ACTIVE
+  CLOSED
+}
+enum OpnameStatus {
+  DRAFT
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+// SPK: kesepakatan pekerjaan dengan mandor/subkontraktor
+model WorkOrder {
+  id               String          @id @default(uuid())
+  tenantId         String
+  projectId        String
+  code             String
+  contractorName   String
+  title            String
+  rabItemId        String // pos RAB (upah) yang dibebani
+  retentionPercent Decimal         @default(0) @db.Decimal(5, 2)
+  status           WorkOrderStatus @default(ACTIVE)
+  notes            String?
+  createdById      String
+  createdAt        DateTime        @default(now())
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines            WorkOrderLine[]
+  opnames          Opname[]
+
+  @@unique([projectId, code])
+  @@index([tenantId, projectId])
+}
+
+model WorkOrderLine {
+  id             String        @id @default(uuid())
+  workOrderId    String
+  description    String
+  unit           String
+  contractVolume Decimal       @db.Decimal(18, 3)
+  unitPrice      Decimal       @db.Decimal(18, 2)
+  sortOrder      Int           @default(0)
+  workOrder      WorkOrder     @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  opnameLines    OpnameLine[]
+}
+
+// Satu opname = satu termin pengukuran volume hasil kerja
+model Opname {
+  id              String       @id @default(uuid())
+  tenantId        String
+  projectId       String
+  workOrderId     String
+  number          Int // termin ke-
+  date            DateTime
+  notes           String?
+  status          OpnameStatus @default(DRAFT)
+  grossAmount     Decimal      @default(0) @db.Decimal(20, 2) // nilai pekerjaan termin ini
+  retentionAmount Decimal      @default(0) @db.Decimal(20, 2)
+  deduction       Decimal      @default(0) @db.Decimal(20, 2) // kasbon / potongan lain
+  netAmount       Decimal      @default(0) @db.Decimal(20, 2) // yang dibayarkan
+  realizationId   String?      @unique
+  approvedById    String?
+  approvedAt      DateTime?
+  paidAt          DateTime?
+  paymentRef      String?
+  createdById     String
+  createdAt       DateTime     @default(now())
+  workOrder       WorkOrder    @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  lines           OpnameLine[]
+
+  @@unique([workOrderId, number])
+  @@index([tenantId, projectId])
+}
+
+model OpnameLine {
+  id               String        @id @default(uuid())
+  opnameId         String
+  lineId           String
+  previousVolume   Decimal       @db.Decimal(18, 3)
+  cumulativeVolume Decimal       @db.Decimal(18, 3)
+  thisVolume       Decimal       @db.Decimal(18, 3)
+  amount           Decimal       @db.Decimal(20, 2)
+  opname           Opname        @relation(fields: [opnameId], references: [id], onDelete: Cascade)
+  line             WorkOrderLine @relation(fields: [lineId], references: [id])
+
+  @@index([opnameId])
+}

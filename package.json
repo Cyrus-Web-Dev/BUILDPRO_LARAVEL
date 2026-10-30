@@ -1,0 +1,12 @@
+{
+  "name": "buildpro",
+  "private": true,
+  "workspaces": ["packages/*", "apps/api", "apps/web"],
+  "scripts": {
+    "build:shared": "npm run build -w @buildpro/shared",
+    "db:up": "docker compose up -d",
+    "db:migrate": "npm run prisma:migrate -w @buildpro/api",
+    "db:seed": "npm run prisma:seed -w @buildpro/api",
+    "dev:api": "npm run start:dev -w @buildpro/api"
+  }
+}

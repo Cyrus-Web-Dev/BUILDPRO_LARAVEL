@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "BUILDPRO",
+    "slug": "buildpro-mobile",
+    "scheme": "buildpro",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      ["expo-location", { "locationWhenInUsePermission": "BUILDPRO memerlukan lokasi untuk menandai posisi laporan lapangan." }],
+      ["expo-image-picker", { "cameraPermission": "BUILDPRO memerlukan kamera untuk memotret kondisi proyek." }]
+    ],
+    "android": { "package": "com.buildpro.mobile" },
+    "ios": { "bundleIdentifier": "com.buildpro.mobile" }
+  }
+}
